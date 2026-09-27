@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
     friendsListSearch: null,
     getAllUserStats: vi.fn(),
     getAllUserMutualCount: vi.fn(),
+    getAllUserMutualOptedOut: vi.fn(),
+    fetchMutualGraph: vi.fn(),
     confirmDeleteFriend: vi.fn(),
     handleFriendDelete: vi.fn(),
     showUserDialog: vi.fn(),
@@ -25,6 +27,7 @@ const mocks = vi.hoisted(() => ({
     setPageIndex: vi.fn(),
     setSorting: vi.fn(),
     toggleBulkColumnVisibility: vi.fn(),
+    pageRows: [],
     pagination: null,
     sorting: null
 }));
@@ -70,7 +73,12 @@ vi.mock('../../../stores', () => ({
         friends: mocks.friends,
         allFavoriteFriendIds: mocks.allFavoriteFriendIds,
         getAllUserStats: mocks.getAllUserStats,
-        getAllUserMutualCount: mocks.getAllUserMutualCount
+        getAllUserMutualCount: mocks.getAllUserMutualCount,
+        getAllUserMutualOptedOut: mocks.getAllUserMutualOptedOut
+    }),
+    useChartsStore: () => ({
+        mutualGraphStatus: { isFetching: false },
+        fetchMutualGraph: mocks.fetchMutualGraph
     }),
     useModalStore: () => ({
         confirm: (...args) => mocks.modalConfirm(...args),
@@ -135,6 +143,7 @@ vi.mock('../../../lib/table/useVrcxVueTable', () => ({
             setPageIndex: (...args) => mocks.setPageIndex(...args),
             setSorting: (...args) => mocks.setSorting(...args),
             getFilteredRowModel: () => ({ rows: options.data }),
+            getRowModel: () => ({ rows: mocks.pageRows }),
             getColumn: (id) =>
                 id === 'bulkSelect'
                     ? {
@@ -149,6 +158,10 @@ vi.mock('../../../lib/table/useVrcxVueTable', () => ({
 
 vi.mock('../columns.jsx', () => ({
     createColumns: () => [{ id: 'bulkSelect' }]
+}));
+
+vi.mock('../../../composables/useUserDisplay', () => ({
+    useUserDisplay: () => ({ userImage: vi.fn() })
 }));
 
 vi.mock('@/components/ui/data-table', () => ({
@@ -234,6 +247,7 @@ vi.mock('@/components/ui/tooltip', () => ({
 }));
 
 vi.mock('lucide-vue-next', () => ({
+    Loader2: { template: '<span />' },
     Star: { template: '<span />' }
 }));
 
@@ -278,10 +292,13 @@ describe('FriendList.vue', () => {
         mocks.friendsListSearch.value = '';
         mocks.pagination.value = { pageIndex: 3, pageSize: 10 };
         mocks.sorting.value = [];
+        mocks.pageRows = [];
 
         mocks.routerPush.mockReset();
         mocks.getAllUserStats.mockReset();
         mocks.getAllUserMutualCount.mockReset();
+        mocks.getAllUserMutualOptedOut.mockReset();
+        mocks.fetchMutualGraph.mockReset();
         mocks.showUserDialog.mockReset();
         mocks.modalConfirm.mockClear();
         mocks.modalAlert.mockReset();
@@ -380,12 +397,12 @@ describe('FriendList.vue', () => {
         expect(mocks.getAllUserMutualCount).toHaveBeenCalledTimes(2);
     });
 
-    test('opens charts tab from toolbar button', async () => {
+    test('loads mutual friends from toolbar button', async () => {
         const wrapper = mount(FriendList);
 
         await clickButtonByText(wrapper, 'view.friend_list.load_mutual_friends');
 
-        expect(mocks.routerPush).toHaveBeenCalledWith({ name: 'charts' });
+        expect(mocks.fetchMutualGraph).toHaveBeenCalledTimes(1);
     });
 
     test('loads missing user profiles and shows completion toast', async () => {
@@ -443,5 +460,37 @@ describe('FriendList.vue', () => {
             pageIndex: 0,
             pageSize: 50
         });
+    });
+
+    test('select all is only shown in bulk mode and selects only the displayed page', async () => {
+        mocks.friends.value = new Map(
+            ['usr_1', 'usr_2', 'usr_3', 'usr_4'].map((id) => [id, makeFriendCtx({ id, displayName: id })])
+        );
+        const wrapper = mount(FriendList);
+        await flushAsync();
+
+        expect(wrapper.text()).not.toContain('view.friend_list.select_all');
+        await wrapper.get('[data-testid="bulk-switch"]').trigger('click');
+
+        // The rendered row model already reflects filtering, sorting and pagination.
+        mocks.pageRows = [{ original: { id: 'usr_3' } }, { original: { id: 'usr_1' } }];
+        await clickButtonByText(wrapper, 'view.friend_list.select_all');
+        expect([...wrapper.vm.selectedFriends]).toEqual(['usr_3', 'usr_1']);
+
+        await clickButtonByText(wrapper, 'view.friend_list.select_all');
+        expect([...wrapper.vm.selectedFriends]).toEqual(['usr_3', 'usr_1']);
+
+        mocks.pageRows = [{ original: { id: 'usr_4' } }];
+        await clickButtonByText(wrapper, 'view.friend_list.select_all');
+        expect([...wrapper.vm.selectedFriends]).toEqual(['usr_3', 'usr_1', 'usr_4']);
+
+        mocks.pageRows = [];
+        await clickButtonByText(wrapper, 'view.friend_list.select_all');
+        expect([...wrapper.vm.selectedFriends]).toEqual(['usr_3', 'usr_1', 'usr_4']);
+        expect(mocks.friendDeleteFriend).not.toHaveBeenCalled();
+
+        await wrapper.get('[data-testid="bulk-switch"]').trigger('click');
+        expect(wrapper.vm.selectedFriends.size).toBe(0);
+        expect(wrapper.text()).not.toContain('view.friend_list.select_all');
     });
 });

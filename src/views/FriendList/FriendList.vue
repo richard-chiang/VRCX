@@ -68,6 +68,9 @@
                         </div>
                         <div class="flex items-center">
                             <div v-if="friendsListBulkUnfriendMode" class="inline-block mr-2">
+                                <Button variant="outline" class="mr-2" @click="selectCurrentPageFriends">
+                                    {{ t('view.friend_list.select_all') }}
+                                </Button>
                                 <Button variant="outline" @click="showBulkUnfriendSelectionConfirm">
                                     {{ t('view.friend_list.bulk_unfriend_selection') }}
                                 </Button>
@@ -464,6 +467,12 @@
     function toggleFriendsListBulkUnfriendMode() {
         if (!friendsListBulkUnfriendMode.value) {
             selectedFriends.value.clear();
+        }
+    }
+
+    function selectCurrentPageFriends() {
+        for (const row of table.getRowModel().rows) {
+            selectedFriends.value.add(row.original.id);
         }
     }
 

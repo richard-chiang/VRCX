@@ -523,6 +523,7 @@
         "friend_list": {
             "bulk_unfriend": "Bulk Unfriend Mode",
             "bulk_unfriend_selection": "Bulk Unfriend Selection",
+            "select_all": "Select All",
             "load": "Load missing entries",
             "load_dialog_title": "Load missing entries",
             "load_dialog_message": "Retrieving missing profile fields for your friends.",
